@@ -7,30 +7,30 @@ from langchain_community.document_loaders import UnstructuredURLLoader
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 import re
 
-# Streamlit app config
-st.set_page_config(page_title="OpenAI Summarizer", page_icon="🦜")
-st.title("🦜 OpenAI: Summarize Text From YouTube or Website")
-st.subheader("Enter a URL to summarize")
+# Streamlit page config
+st.set_page_config(page_title="OpenAI: Summarize Text From YT or Website", page_icon="🦜")
+st.title("🦜 OpenAI: Summarize Text From YT or Website")
+st.subheader("Summarize from a YouTube video or Website URL")
 
-# Sidebar for OpenAI API key input
+# Sidebar: OpenAI API Key input
 with st.sidebar:
-    openai_api_key = st.text_input("OpenAI API Key", type="password")
+    openai_api_key = st.text_input("OpenAI API Key", value="", type="password")
 
 # URL input
-generic_url = st.text_input("Enter YouTube or Website URL")
+generic_url = st.text_input("Enter a YouTube or Website URL", label_visibility="visible")
 
-# Initialize OpenAI LLM
+# Initialize LLM
 llm = None
 if openai_api_key:
     try:
         llm = ChatOpenAI(
-            model="gpt-4",  # Change to "gpt-3.5-turbo" if you want cheaper/faster
+            model="gpt-3.5-turbo",  #  "gpt-4orgpt-3.5-turbo"
             temperature=0,
             openai_api_key=openai_api_key,
-            max_tokens=1000,
+            max_tokens=1000
         )
     except Exception as e:
-        st.error("Failed to initialize OpenAI model. Check your API key.")
+        st.error("Failed to initialize OpenAI LLM. Check your API key.")
         st.exception(e)
 
 # Prompt template for summarization
@@ -41,13 +41,13 @@ Content: {text}
 """
 prompt = PromptTemplate(template=prompt_template, input_variables=["text"])
 
-# Function to extract transcript from YouTube video
+# Extract YouTube transcript helper
 def get_youtube_transcript(url):
-    video_id_match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11}).*", url)
-    if not video_id_match:
-        raise ValueError("Invalid YouTube URL.")
-    video_id = video_id_match.group(1)
     try:
+        video_id_match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11}).*", url)
+        if not video_id_match:
+            raise ValueError("Invalid YouTube URL format.")
+        video_id = video_id_match.group(1)
         transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
         transcript_text = " ".join([item['text'] for item in transcript_list])
         return transcript_text
@@ -56,20 +56,21 @@ def get_youtube_transcript(url):
     except NoTranscriptFound:
         raise Exception("No transcript found for this video.")
     except Exception as e:
-        raise Exception(f"Error extracting transcript: {e}")
+        raise Exception(f"Failed to extract transcript: {e}")
 
-# Main summarize button click
-if st.button("Summarize"):
+# Main summarization logic
+if st.button("Summarize the Content from YT or Website"):
 
-    if not openai_api_key or not generic_url:
-        st.error("Please provide both an OpenAI API key and a valid URL.")
+    if not openai_api_key.strip() or not generic_url.strip():
+        st.error("Please provide both the OpenAI API key and a valid URL.")
     elif not validators.url(generic_url):
-        st.error("Please enter a valid URL.")
+        st.error("Please enter a valid URL (e.g., a YouTube video or a website).")
     elif not llm:
-        st.error("OpenAI model not initialized.")
+        st.error("LLM is not initialized. Check your OpenAI API key.")
     else:
         try:
-            with st.spinner("Fetching and summarizing content..."):
+            with st.spinner("Fetching content and summarizing..."):
+
                 if "youtube.com" in generic_url or "youtu.be" in generic_url:
                     transcript = get_youtube_transcript(generic_url)
                     from langchain.schema import Document
@@ -78,16 +79,16 @@ if st.button("Summarize"):
                     loader = UnstructuredURLLoader(
                         urls=[generic_url],
                         ssl_verify=False,
-                        headers={"User-Agent": "Mozilla/5.0"},
+                        headers={"User-Agent": "Mozilla/5.0"}
                     )
                     docs = loader.load()
 
                 chain = load_summarize_chain(llm, chain_type="stuff", prompt=prompt)
-                summary = chain.run(docs)
+                output_summary = chain.run(docs)
 
                 st.success("Summary:")
-                st.write(summary)
+                st.write(output_summary)
 
         except Exception as e:
-            st.error("An error occurred while summarizing.")
+            st.error("An error occurred during summarization.")
             st.exception(e)
