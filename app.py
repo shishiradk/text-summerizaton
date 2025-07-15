@@ -1,93 +1,56 @@
-import validators
-import streamlit as st
-from langchain.chat_models import ChatOpenAI
+import validators,streamlit as st
 from langchain.prompts import PromptTemplate
+from langchain_groq import ChatGroq
 from langchain.chains.summarize import load_summarize_chain
-from langchain_community.document_loaders import UnstructuredURLLoader
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
-import re
+from langchain_community.document_loaders import YoutubeLoader,UnstructuredURLLoader
 
-# Streamlit app config
-st.set_page_config(page_title="OpenAI Summarizer", page_icon="🦜")
-st.title("🦜 OpenAI: Summarize Text From YouTube or Website")
-st.subheader("Enter a URL to summarize")
 
-# Sidebar for OpenAI API key input
+## sstreamlit APP
+st.set_page_config(page_title="LangChain: Summarize Text From YT or Website", page_icon="🦜")
+st.title("🦜 LangChain: Summarize Text From YT or Website")
+st.subheader('Summarize URL')
+
+
+
+## Get the Groq API Key and url(YT or website)to be summarized
 with st.sidebar:
-    openai_api_key = st.text_input("OpenAI API Key", type="password")
+    groq_api_key=st.text_input("Groq API Key",value="",type="password")
 
-# URL input
-generic_url = st.text_input("Enter YouTube or Website URL")
+generic_url=st.text_input("URL",label_visibility="collapsed")
 
-# Initialize OpenAI LLM
-llm = None
-if openai_api_key:
-    try:
-        llm = ChatOpenAI(
-            model="gpt-4",  # Change to "gpt-3.5-turbo" if you want cheaper/faster
-            temperature=0,
-            openai_api_key=openai_api_key,
-            max_tokens=1000,
-        )
-    except Exception as e:
-        st.error("Failed to initialize OpenAI model. Check your API key.")
-        st.exception(e)
+## Gemma Model USsing Groq API
+llm =ChatGroq(model="Gemma-7b-It", groq_api_key=groq_api_key)
 
-# Prompt template for summarization
-prompt_template = """
-Provide a concise summary (around 300 words) of the following content:
+prompt_template="""
+Provide a summary of the following content in 300 words:
+Content:{text}
 
-Content: {text}
 """
-prompt = PromptTemplate(template=prompt_template, input_variables=["text"])
+prompt=PromptTemplate(template=prompt_template,input_variables=["text"])
 
-# Function to extract transcript from YouTube video
-def get_youtube_transcript(url):
-    video_id_match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11}).*", url)
-    if not video_id_match:
-        raise ValueError("Invalid YouTube URL.")
-    video_id = video_id_match.group(1)
-    try:
-        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
-        transcript_text = " ".join([item['text'] for item in transcript_list])
-        return transcript_text
-    except TranscriptsDisabled:
-        raise Exception("Transcripts are disabled for this video.")
-    except NoTranscriptFound:
-        raise Exception("No transcript found for this video.")
-    except Exception as e:
-        raise Exception(f"Error extracting transcript: {e}")
-
-# Main summarize button click
-if st.button("Summarize"):
-
-    if not openai_api_key or not generic_url:
-        st.error("Please provide both an OpenAI API key and a valid URL.")
+if st.button("Summarize the Content from YT or Website"):
+    ## Validate all the inputs
+    if not groq_api_key.strip() or not generic_url.strip():
+        st.error("Please provide the information to get started")
     elif not validators.url(generic_url):
-        st.error("Please enter a valid URL.")
-    elif not llm:
-        st.error("OpenAI model not initialized.")
+        st.error("Please enter a valid Url. It can may be a YT video utl or website url")
+
     else:
         try:
-            with st.spinner("Fetching and summarizing content..."):
-                if "youtube.com" in generic_url or "youtu.be" in generic_url:
-                    transcript = get_youtube_transcript(generic_url)
-                    from langchain.schema import Document
-                    docs = [Document(page_content=transcript)]
+            with st.spinner("Waiting..."):
+                ## loading the website or yt video data
+                if "youtube.com" in generic_url:
+                    loader=YoutubeLoader.from_youtube_url(generic_url,add_video_info=True)
                 else:
-                    loader = UnstructuredURLLoader(
-                        urls=[generic_url],
-                        ssl_verify=False,
-                        headers={"User-Agent": "Mozilla/5.0"},
-                    )
-                    docs = loader.load()
+                    loader=UnstructuredURLLoader(urls=[generic_url],ssl_verify=False,
+                                                 headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"})
+                docs=loader.load()
 
-                chain = load_summarize_chain(llm, chain_type="stuff", prompt=prompt)
-                summary = chain.run(docs)
+                ## Chain For Summarization
+                chain=load_summarize_chain(llm,chain_type="stuff",prompt=prompt)
+                output_summary=chain.run(docs)
 
-                st.success("Summary:")
-                st.write(summary)
-
+                st.success(output_summary)
         except Exception as e:
-            st.error("An error occurred while summarizing.")
-            st.exception(e)
+            st.exception(f"Exception:{e}")
+                    
